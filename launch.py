@@ -11,7 +11,7 @@ import os
 pathImages = '/share/apps/files/convolution/images/'
 pathKernel = '../kernels/'
 pathResult = '/state/partition1/amr6/'
-partitions = 1
+partitions = 4
 
 #Initialize the list of files
 lstImages  = []
@@ -38,6 +38,6 @@ for img in lstImages:
 	(namek, extension) = os.path.splitext(krn)
 	nameimgresults  = namei + namek + '.ppm'
 	nametimeresults = namei + namek + '.txt'
-    cmd = './serialconvolution ' + pathImages + img + ' ' + pathKernel + krn + ' ' + pathResult + nameimgresults + ' ' + str(partitions) + ' >' + pathResult + nametimeresults
-        #    os.system(str)
+    cmd = './conv ' + pathImages + img + ' ' + pathKernel + krn + ' ' + pathResult + nameimgresults + ' ' + str(partitions) + ' > ' + pathResult + nametimeresults
+    os.system(cmd)
     print (cmd)
