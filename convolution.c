@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <sys/time.h>
 #include <time.h>
-#include “omp.h”
+#include "omp.h"
 
 // Structure to store image.
 struct imagenppm{
@@ -70,18 +70,13 @@ ImagenData initimage(char* nombre, FILE **fp,int partitions, int halo){
         fscanf(*fp,"%c%d ",&c,&(img->P));
 
         //Reading the image comment
-        /*#pragma omp parallel
-        {
-          omp_set_num_threads(4);
-          int id = omp_get_thread_num();
-          printf("hola soy el subnormal numero %d\n", id);*/
-          while((c=fgetc(*fp))!= '\n')
-          {
-            #pragma omp critical
-            comentario[i]=c;
+
+        while ((c = fgetc(*fp)) != '\n') {
+            comentario[i] = c;
             i++;
-          }
-        //}
+
+        }
+
         comentario[i]='\0';
         //Allocating information for the image comment
         img->comentario = calloc(strlen(comentario),sizeof(char));
@@ -135,7 +130,7 @@ int readImage(ImagenData img, FILE **fp, int dim, int halosize, long *position){
         // When start reading the halo store the position in the image file
         if (halosize != 0 && i == haloposition) *position=ftell(*fp);
         fscanf(*fp,"%d %d %d ",&img->R[i],&img->G[i],&img->B[i]);
-        k++;
+        //k++;
     }
 //    printf ("Readed = %d pixels, posicio=%lu\n",k,*position);
     return 0;
@@ -174,9 +169,10 @@ kernelData leerKernel(char* nombre){
         kern->vkern = (float *)malloc(kern->kernelX*kern->kernelY*sizeof(float));
 
         // Reading kernel matrix values
-        for (i=0;i<(kern->kernelX*kern->kernelY)-1;i++){
-            fscanf(fp,"%f,",&kern->vkern[i]);
+        for (i = 0; i < (kern->kernelX * kern->kernelY) - 1; i++) {
+            fscanf(fp, "%f,", &kern->vkern[i]);
         }
+
         fscanf(fp,"%f",&kern->vkern[i]);
         fclose(fp);
     }
@@ -256,57 +252,59 @@ int convolve2D(int* in, int* out, int dataSizeX, int dataSizeY,
     outPtr = out;
     kPtr = kernel;
 
-    // start convolution
-    for(i= 0; i < dataSizeY; ++i)                   // number of rows
-    {
-        // compute the range of convolution, the current row of kernel should be between these
-        rowMax = i + kCenterY;
-        rowMin = i - dataSizeY + kCenterY;
-
-        for(j = 0; j < dataSizeX; ++j)              // number of columns
+    //#pragma omp parallel private(kPtr, outPtr, inPtr)
+    //{
+        //#pragma omp for
+        // start convolution
+        for (i = 0; i < dataSizeY; ++i)                   // number of rows
         {
-            // compute the range of convolution, the current column of kernel should be between these
-            colMax = j + kCenterX;
-            colMin = j - dataSizeX + kCenterX;
+            // compute the range of convolution, the current row of kernel should be between these
+            rowMax = i + kCenterY;
+            rowMin = i - dataSizeY + kCenterY;
 
-            sum = 0;                                // set to 0 before accumulate
-
-            // flip the kernel and traverse all the kernel values
-            // multiply each kernel value with underlying input data
-            for(m = 0; m < kernelSizeY; ++m)        // kernel rows
+            //#pragma omp for
+            for (j = 0; j < dataSizeX; ++j)              // number of columns
             {
-                // check if the index is out of bound of input array
-                if(m <= rowMax && m > rowMin)
-                {
-                    for(n = 0; n < kernelSizeX; ++n)
+                // compute the range of convolution, the current column of kernel should be between these
+                colMax = j + kCenterX;
+                colMin = j - dataSizeX + kCenterX;
+
+
+                sum = 0;                                // set to 0 before accumulate
+
+                // flip the kernel and traverse all the kernel values
+                // multiply each kernel value with underlying input data
+                //#pragma omp parallel for reduction(+:sum)
+                    for (m = 0; m < kernelSizeY; ++m)        // kernel rows
                     {
-                        // check the boundary of array
-                        if(n <= colMax && n > colMin)
-                            sum += *(inPtr - n) * *kPtr;
+                        // check if the index is out of bound of input array
+                        if (m <= rowMax && m > rowMin) {
+                            for (n = 0; n < kernelSizeX; ++n) {
+                                // check the boundary of array
+                                if (n <= colMax && n > colMin)
+                                    sum += *(inPtr - n) * *kPtr;
 
-                        ++kPtr;                     // next kernel
+                                ++kPtr;                     // next kernel
+                            }
+                        } else
+                            kPtr += kernelSizeX;            // out of bound, move to next row of kernel
+
+                        inPtr -= dataSizeX;                 // move input data 1 raw up
                     }
-                }
-                else
-                    kPtr += kernelSizeX;            // out of bound, move to next row of kernel
-
-                inPtr -= dataSizeX;                 // move input data 1 raw up
-            }
-
-            // convert integer number
-            if(sum >= 0) *outPtr = (int)(sum + 0.5f);
+                // convert integer number
+                if (sum >= 0) *outPtr = (int) (sum + 0.5f);
 //            else *outPtr = (int)(sum - 0.5f)*(-1);
-            // For using with image editors like GIMP or others...
-            else *outPtr = (int)(sum - 0.5f);
-            // For using with a text editor that read ppm images like libreoffice or others...
+                    // For using with image editors like GIMP or others...
+                else *outPtr = (int) (sum - 0.5f);
+                // For using with a text editor that read ppm images like libreoffice or others...
 //            else *outPtr = 0;
 
-            kPtr = kernel;                          // reset kernel to (0,0)
-            inPtr = ++inPtr2;                       // next input
-            ++outPtr;                               // next output
+                kPtr = kernel;                          // reset kernel to (0,0)
+                inPtr = ++inPtr2;                       // next input
+                ++outPtr;                               // next output
+            }
         }
-    }
-
+    //}
     return 0;
 }
 
@@ -401,77 +399,85 @@ int main(int argc, char **argv)
     imagesize = source->altura*source->ancho;
     partsize  = (source->altura*source->ancho)/partitions;
 //    printf("%s ocupa %dx%d=%d pixels. Partitions=%d, halo=%d, partsize=%d pixels\n", argv[1], source->altura, source->ancho, imagesize, partitions, halo, partsize);
-    while (c < partitions) {
-        ////////////////////////////////////////////////////////////////////////////////
-        //Reading Next chunk.
-        gettimeofday(&tim, NULL);
-        start = tim.tv_sec+(tim.tv_usec/1000000.0);
-        if (c==0) {
-            halosize  = halo/2;
-            chunksize = partsize + (source->ancho*halosize);
-            offset   = 0;
-        }
-        else if(c<partitions-1) {
-            halosize  = halo;
-            chunksize = partsize + (source->ancho*halosize);
-            offset    = (source->ancho*halo/2);
-        }
-        else {
-            halosize  = halo/2;
-            chunksize = partsize + (source->ancho*halosize);
-            offset    = (source->ancho*halo/2);
-        }
-        //DEBUG
-//        printf("\nRound = %d, position = %ld, partsize= %d, chunksize=%d pixels\n", c, position, partsize, chunksize);
+    #pragma omp parallell
+    {
+        //for(c = 0; c < partitions; c++){
+        while (c < partitions) {
+            ////////////////////////////////////////////////////////////////////////////////
+            //Reading Next chunk.
+            gettimeofday(&tim, NULL);
+            start = tim.tv_sec + (tim.tv_usec / 1000000.0);
+            #pragma omp critical
+            {
+                if (c == 0) {
+                    halosize = halo / 2;
+                    chunksize = partsize + (source->ancho * halosize);
+                    offset = 0;
+                } else if (c < partitions - 1) {
+                    halosize = halo;
+                    chunksize = partsize + (source->ancho * halosize);
+                    offset = (source->ancho * halo / 2);
+                } else {
+                    halosize = halo / 2;
+                    chunksize = partsize + (source->ancho * halosize);
+                    offset = (source->ancho * halo / 2);
+                }
+                c++;
+            }
+            //DEBUG
+            //        printf("\nRound = %d, position = %ld, partsize= %d, chunksize=%d pixels\n", c, position, partsize, chunksize);
 
-        if (readImage(source, &fpsrc, chunksize, halo/2, &position)) {
-            return -1;
+            if (readImage(source, &fpsrc, chunksize, halo / 2, &position)) {
+                exit(-1);
+            }
+            gettimeofday(&tim, NULL);
+            tread = tread + (tim.tv_sec + (tim.tv_usec / 1000000.0) - start);
+
+            //Duplicate the image chunk
+            gettimeofday(&tim, NULL);
+            start = tim.tv_sec + (tim.tv_usec / 1000000.0);
+            if (duplicateImageChunk(source, output, chunksize)) {
+                exit(-1);
+            }
+            //DEBUG
+            //        for (i=0;i<chunksize;i++)
+            //            if (source->R[i]!=output->R[i] || source->G[i]!=output->G[i] || source->B[i]!=output->B[i]) printf("At position i=%d %d!=%d,%d!=%d,%d!=%d\n",i,source->R[i],output->R[i], source->G[i],output->G[i],source->B[i],output->B[i]);
+            gettimeofday(&tim, NULL);
+            tcopy = tcopy + (tim.tv_sec + (tim.tv_usec / 1000000.0) - start);
+
+            //////////////////////////////////////////////////////////////////////////////////////////////////
+            // CHUNK CONVOLUTION
+            //////////////////////////////////////////////////////////////////////////////////////////////////
+            gettimeofday(&tim, NULL);
+            start = tim.tv_sec + (tim.tv_usec / 1000000.0);
+
+            convolve2D(source->R, output->R, source->ancho, (source->altura / partitions) + halosize, kern->vkern,
+                       kern->kernelX, kern->kernelY);
+            convolve2D(source->G, output->G, source->ancho, (source->altura / partitions) + halosize, kern->vkern,
+                       kern->kernelX, kern->kernelY);
+            convolve2D(source->B, output->B, source->ancho, (source->altura / partitions) + halosize, kern->vkern,
+                       kern->kernelX, kern->kernelY);
+
+            gettimeofday(&tim, NULL);
+            tconv = tconv + (tim.tv_sec + (tim.tv_usec / 1000000.0) - start);
+
+            //////////////////////////////////////////////////////////////////////////////////////////////////
+            // CHUNK SAVING
+            //////////////////////////////////////////////////////////////////////////////////////////////////
+            //Storing resulting image partition.
+            gettimeofday(&tim, NULL);
+            start = tim.tv_sec + (tim.tv_usec / 1000000.0);
+            if (savingChunk(output, &fpdst, partsize, offset)) {
+                perror("Error: ");
+                //        free(source);
+                //        free(output);
+                exit(-1);
+            }
+            gettimeofday(&tim, NULL);
+            tstore = tstore + (tim.tv_sec + (tim.tv_usec / 1000000.0) - start);
         }
-        gettimeofday(&tim, NULL);
-        tread = tread + (tim.tv_sec+(tim.tv_usec/1000000.0) - start);
-
-        //Duplicate the image chunk
-        gettimeofday(&tim, NULL);
-        start = tim.tv_sec+(tim.tv_usec/1000000.0);
-        if ( duplicateImageChunk(source, output, chunksize) ) {
-            return -1;
-        }
-        //DEBUG
-//        for (i=0;i<chunksize;i++)
-//            if (source->R[i]!=output->R[i] || source->G[i]!=output->G[i] || source->B[i]!=output->B[i]) printf("At position i=%d %d!=%d,%d!=%d,%d!=%d\n",i,source->R[i],output->R[i], source->G[i],output->G[i],source->B[i],output->B[i]);
-        gettimeofday(&tim, NULL);
-        tcopy = tcopy + (tim.tv_sec+(tim.tv_usec/1000000.0) - start);
-
-        //////////////////////////////////////////////////////////////////////////////////////////////////
-        // CHUNK CONVOLUTION
-        //////////////////////////////////////////////////////////////////////////////////////////////////
-        gettimeofday(&tim, NULL);
-        start = tim.tv_sec+(tim.tv_usec/1000000.0);
-
-        convolve2D(source->R, output->R, source->ancho, (source->altura/partitions)+halosize, kern->vkern, kern->kernelX, kern->kernelY);
-        convolve2D(source->G, output->G, source->ancho, (source->altura/partitions)+halosize, kern->vkern, kern->kernelX, kern->kernelY);
-        convolve2D(source->B, output->B, source->ancho, (source->altura/partitions)+halosize, kern->vkern, kern->kernelX, kern->kernelY);
-
-        gettimeofday(&tim, NULL);
-        tconv = tconv + (tim.tv_sec+(tim.tv_usec/1000000.0) - start);
-
-        //////////////////////////////////////////////////////////////////////////////////////////////////
-        // CHUNK SAVING
-        //////////////////////////////////////////////////////////////////////////////////////////////////
-        //Storing resulting image partition.
-        gettimeofday(&tim, NULL);
-        start = tim.tv_sec+(tim.tv_usec/1000000.0);
-        if (savingChunk(output, &fpdst, partsize, offset)) {
-            perror("Error: ");
-            //        free(source);
-            //        free(output);
-            return -1;
-        }
-        gettimeofday(&tim, NULL);
-        tstore = tstore + (tim.tv_sec+(tim.tv_usec/1000000.0) - start);
-        //Next partition
-        c++;
     }
+
 
     fclose(fpsrc);
     fclose(fpdst);
