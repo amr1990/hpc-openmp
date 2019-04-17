@@ -70,11 +70,11 @@ ImagenData initimage(char* nombre, FILE **fp,int partitions, int halo){
         fscanf(*fp,"%c%d ",&c,&(img->P));
 
         //Reading the image comment
-
         while ((c = fgetc(*fp)) != '\n') {
             comentario[i] = c;
             i++;
         }
+
 
         comentario[i]='\0';
         //Allocating information for the image comment
@@ -125,6 +125,7 @@ int readImage(ImagenData img, FILE **fp, int dim, int halosize, long *position){
     if (fseek(*fp,*position,SEEK_SET))
         perror("Error: ");
     haloposition = dim-(img->ancho*halosize*2);
+
     for(i=0;i<dim;i++) {
         // When start reading the halo store the position in the image file
         if (halosize != 0 && i == haloposition) *position=ftell(*fp);
@@ -141,7 +142,7 @@ int duplicateImageChunk(ImagenData src, ImagenData dst, int dim){
     int chunk;
     chunk = dim / omp_get_max_threads();
 
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(static, chunk)
     for(i=0;i<dim;i++){
         dst->R[i] = src->R[i];
         dst->G[i] = src->G[i];
@@ -258,9 +259,8 @@ int convolve2D(int* in, int* out, int dataSizeX, int dataSizeY, float* kernel, i
     kernelY = kernelSizeY / omp_get_max_threads();
 
 
-    #pragma omp parallel private(i,j,m,n)
-        // start convolution
-    #pragma omp for schedule(dynamic, chunkY) reduction(+:sum) nowait
+#pragma omp parallel private(i,j,n,m)
+#pragma omp for schedule(guided, chunkX) reduction(+:sum) nowait
     for (i = 0; i < dataSizeY; ++i)                   // number of rows
         {
             // compute the range of convolution, the current row of kernel should be between these
@@ -282,6 +282,7 @@ int convolve2D(int* in, int* out, int dataSizeX, int dataSizeY, float* kernel, i
                     {
                         // check if the index is out of bound of input array
                         if (m <= rowMax && m > rowMin) {
+//#pragma vector aligned
                             for (n = 0; n < kernelSizeX; ++n) {
                                 // check the boundary of array
                                 if (n <= colMax && n > colMin)
@@ -451,7 +452,7 @@ int main(int argc, char **argv)
 
             #pragma omp parallel
             {
-                #pragma omp sections nowait
+                #pragma omp sections
                 {
                     #pragma omp section
                     convolve2D(source->R, output->R, source->ancho, (source->altura / partitions) + halosize,
