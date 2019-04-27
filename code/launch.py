@@ -10,7 +10,7 @@ import os
 #Path for directories
 pathImages = '../image/'
 pathKernel = '../kernels/'
-pathResult = '../outputs/parallel'
+pathResult = '../outputs/'
 partitions = 4
 
 #Initialize the list of files
@@ -30,7 +30,6 @@ for root, dirs, files in lstDir:
     for fichero in files:
         (nombreFichero, extension) = os.path.splitext(fichero)
 	lstKernels.append(nombreFichero+extension)
-
 
 for krn in lstKernels:
     #	print(img,krn)

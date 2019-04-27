@@ -142,7 +142,7 @@ int duplicateImageChunk(ImagenData src, ImagenData dst, int dim){
     int chunk;
     chunk = dim / omp_get_max_threads();
 
-    #pragma omp parallel for schedule(static, chunk)
+    #pragma omp parallel for schedule(guided, chunk)
     for(i=0;i<dim;i++){
         dst->R[i] = src->R[i];
         dst->G[i] = src->G[i];
@@ -282,7 +282,6 @@ int convolve2D(int* in, int* out, int dataSizeX, int dataSizeY, float* kernel, i
                     {
                         // check if the index is out of bound of input array
                         if (m <= rowMax && m > rowMin) {
-//#pragma vector aligned
                             for (n = 0; n < kernelSizeX; ++n) {
                                 // check the boundary of array
                                 if (n <= colMax && n > colMin)
@@ -401,8 +400,6 @@ int main(int argc, char **argv)
     imagesize = source->altura*source->ancho;
     partsize  = (source->altura*source->ancho)/partitions;
 //    printf("%s ocupa %dx%d=%d pixels. Partitions=%d, halo=%d, partsize=%d pixels\n", argv[1], source->altura, source->ancho, imagesize, partitions, halo, partsize);
-
-        //for(c = 0; c < partitions; c++){
         while (c < partitions) {
             ////////////////////////////////////////////////////////////////////////////////
             //Reading Next chunk.
