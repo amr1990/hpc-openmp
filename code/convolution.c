@@ -452,7 +452,7 @@ int main(int argc, char **argv)
 
             #pragma omp parallel
             {
-                #pragma omp sections
+                #pragma omp sections nowait
                 {
                     #pragma omp section
                     convolve2D(source->R, output->R, source->ancho, (source->altura / partitions) + halosize,
